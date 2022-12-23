@@ -1,69 +1,68 @@
 
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
 #include <ctime>
 #include <fstream>
-#include <iostream>
+#include <thread> //потоки
+#include <chrono> //время
 
-#define LEN 1000
-#define LAGRANGE_DEGREE 4 // СТЕПЕНЬ МНОГОЧЛЕНА ЛАГРАНЖА
+#include "lagrange_resampler.h"
+
+//#define LEN 1000
+#define LAGRANGE_DEGREE 4  // СТЕПЕНЬ МНОГОЧЛЕНА ЛАГРАНЖА
 
 float lagrange_point(
     float x, int n, float *t_arr,
-    float *y_arr); // рассчет значений для каждого отдельного дискрета
+    float *y_arr);  // рассчет значений для каждого отдельного дискрета
 
-void lagrange_trace(
-    float t0, float dt, int size_old, float *t_old, float *v_old, float *t_new,
-    float *v_new); //функция для рассчета значений трасы после ресамплинга
+int lagrange_trace(
+    float t0, float dt, int size_old, float *t_old, float *v_old, int size_new,
+    float *t_new,
+    float *v_new);  //функция для рассчета значений трасы после ресамплинга
 
 void generate_trace(
     float *time, float *value, float start_time, float dt,
-    int trace_lenght); // создание трассы с синусом для отладки алгоритма
+    int trace_lenght);  // создание трассы с синусом для отладки алгоритма
 
 void write_output(float *t, float *v, int size,
-                  char *filename); //вывод в текстовый файл для проверки
+                  char *filename);  //вывод в текстовый файл для проверки
 
 int find_index_for_lagrange(float *t_old, int size_old, float t_cur,
                             int old_t_cur_ind);
 // поиск индексов элементов для рассчета многочлена Лагранжа
 // для каждого отсчета времени новой трассы
 
-void linear_trace(float *t_old, float *v_old, int size_old, float dt_new,
-                  float *t_new, float *v_new, float t0);
-//функция для рассчета новой трассы путем линейной интерполяции
+int calc_new_size(float new_dt, int old_size, float *old_t);
 
 using namespace std;
 
-int main() {
-#ifdef LEN
+int main(int argc, char** argv) {
+#ifndef LEN
 #define LEN 8000
 #endif
-  float t[LEN] = {0}; // параметры трассы для отладки
+  float t[LEN] = {0};  // параметры трассы для отладки
   float v[LEN] = {0};
   float start_time = 1234.5;
-  float dt = 0.5;
+  float old_dt = 0.5;
+  float new_dt = 0.1;
 
-  generate_trace(t, v, start_time, dt, LEN); // test trace
-
+  generate_trace(t, v, start_time, old_dt, LEN);  // test trace
+  lagrange_resampler *test =
+      new lagrange_resampler(start_time, 8000, t, v, new_dt);
   write_output(t, v, LEN,
-               "C:\\Users\\n.titov\\Desktop\\sborex_resample\\out_old.txt");
-
-  float t_new[LEN * 4 + 1] = {0}; //трассы после ресамплинга
-  float v_new[LEN * 4 + 1] = {0};
-
-  unsigned int begin_time = clock();
-  for (int i = 0; i < 768; i++) {
-    lagrange_trace(1234.0, 0.125, LEN, t, v, t_new, v_new);
-  }
-  unsigned int end_time = clock();
-  unsigned int exec_time = end_time - start_time;
-  printf("%d", exec_time);
-
-  write_output(t_new, v_new, LEN * 4 + 1,
-               "C:\\Users\\n.titov\\Desktop\\sborex_resample\\out_new.txt");
-
+               "C:\\Users\\Lenovo\\Desktop\\sborex_resample\\out_old.txt");
+  test->do_approximation();
+  float *tf = test->get_new_t();
+  float *vf = test->get_new_v();
+  write_output(test->get_new_t(), test->get_new_v(), test->get_new_size(),
+               "C:\\Users\\Lenovo\\Desktop\\sborex_resample\\out_new.txt");
+  test->clear();
   return 0;
+}
+
+int calc_new_size(float new_dt, int old_size, float *old_t) {
+  return ((old_t[old_size - 1] - old_t[0]) / new_dt +
+          ((old_t[old_size - 1] - old_t[0]) / old_size) / new_dt);
 }
 
 float lagrange_point(float x, int n, float *t_arr, float *y_arr) {
@@ -73,41 +72,45 @@ float lagrange_point(float x, int n, float *t_arr, float *y_arr) {
   // y_arr - array of values
   float sum = 0;
   for (int i = 0; i < n; ++i) {
-    float l = 1; // многочлен Лагранжа
+    float l = 1;  // многочлен Лагранжа
     for (int j = 0; j < n; ++j)
-      if (j != i)
-        l *= (x - t_arr[j]) / (t_arr[i] - t_arr[j]);
+      if (j != i) l *= (x - t_arr[j]) / (t_arr[i] - t_arr[j]);
     sum += y_arr[i] * l;
   }
   return sum;
 }
 
-void lagrange_trace(float t0, float dt, int size_old, float *t_old,
-                    float *v_old, float *t_new, float *v_new) {
-
+int lagrange_trace(float t0, float dt_new, int size_old, float *t_old,
+                   float *v_old, int size_new, float *t_new, float *v_new) {
   // t0 - время синхроимпульса, dt -новый шаг дискретизации, size - размер
   // старого массива, t_old v_old - старая трасса, t_new v_new - новая трасса
 
-  int size_new = 0; //размер трассы после ресамплинга
-  float t = t0; //переменная для рассчета длины новой трассы
-  int old_t_cur_ind = 0; //переменная для хранения индекса массива отсчетов
-                         //времени старой трассы
+  // int size_new = 0; //размер трассы после ресамплинга
+  float t = t0;  //переменная для рассчета длины новой трассы
+  int old_t_cur_ind = 0;  //переменная для хранения индекса массива отсчетов
+                          //времени старой трассы
 
-  int ind_t_new = 0; // индекс для элементов новой трассы для этого цикла
-  while (t <= t_old[size_old - 1]) { // узнаем кол-во отсчетов в новой трассе
-    // и заполняем элементами массив временных отсчетов для новой трассы
-    size_new++;
+  int ind_t_new = 0;  // индекс для элементов новой трассы для этого цикла
+  //  while (t <= t_old[size_old - 1]) { // узнаем кол-во отсчетов в новой
+  //  трассе
+  //    // и заполняем элементами массив временных отсчетов для новой трассы
+  //    size_new++;
+  //    t_new[ind_t_new] = t;
+  //    ind_t_new++;
+  //    t += dt;
+  //  }
+
+  while (ind_t_new < size_new) {
     t_new[ind_t_new] = t;
+    t += dt_new;
     ind_t_new++;
-    t += dt;
   }
 
   for (int ind_t_new = 0; ind_t_new < size_new; ind_t_new++) {
+    if (t_new[ind_t_new] < t_old[1]) {  //для краевого случая, когда отсчет
+                                        //новой трассы до 2-го отсчета старой
 
-    if (t_new[ind_t_new] < t_old[1]) { //для краевого случая, когда отсчет новой
-                                       //трассы до 2-го отсчета старой
-
-      float tmp_t_old[4]; //болванки для расчета
+      float tmp_t_old[4];  //болванки для расчета
       float tmp_v_old[4];
       for (int j = 0; j < 4; j++) {
         tmp_t_old[j] = t_old[j];
@@ -120,7 +123,7 @@ void lagrange_trace(float t0, float dt, int size_old, float *t_old,
       //для краевого случая, когда отсчет новой трассы
       //позже предпоследнего отсчета старой
 
-      float tmp_t_old[4]; //болванки для расчета
+      float tmp_t_old[4];  //болванки для расчета
       float tmp_v_old[4];
       for (int j = 0; j < 4; j++) {
         tmp_t_old[j] = t_old[size_old - 4 + j];
@@ -134,7 +137,7 @@ void lagrange_trace(float t0, float dt, int size_old, float *t_old,
       old_t_cur_ind = find_index_for_lagrange(t_old, size_old, t_new[ind_t_new],
                                               old_t_cur_ind);
 
-      float tmp_t_old[4]; //болванки для расчета
+      float tmp_t_old[4];  //болванки для расчета
       float tmp_v_old[4];
       for (int j = 0; j < 4; j++) {
         tmp_t_old[j] = t_old[old_t_cur_ind + j];
@@ -144,12 +147,13 @@ void lagrange_trace(float t0, float dt, int size_old, float *t_old,
                                         tmp_t_old, tmp_v_old);
     }
   }
+  return ind_t_new;
 }
 
 int find_index_for_lagrange(float *t_old, int size_old, float t_cur,
                             int old_t_cur_ind) {
   int result = -1;
-  for (int i = old_t_cur_ind; i < size_old; i++) { //рассчитать рамки
+  for (int i = old_t_cur_ind; i < size_old; i++) {  //рассчитать рамки
     if (t_cur >= t_old[i + 1] && t_cur <= t_old[i + 2]) {
       result = i;
       break;
@@ -178,14 +182,3 @@ void write_output(float *t, float *v, int size, char *filename) {
   }
   file.close();
 }
-
-// void linear_trace(float *t_old, float *v_old, int size_old, float dt_new,
-//                  float *t_new, float *v_new, float t0) {
-//  float t = t0;
-//  int size_new = 0;
-//  while (t < t_old[size_old - 1]) {
-//    t_new[size_new] = t;
-//    size_new++;
-//    t += dt_new;
-//  }
-//}
