@@ -8,7 +8,7 @@
 
 #include "lagrange_resampler.h"
 
-//#define LEN 1000
+#define LEN 8000
 #define LAGRANGE_DEGREE 4  // СТЕПЕНЬ МНОГОЧЛЕНА ЛАГРАНЖА
 
 float lagrange_point(
@@ -36,29 +36,53 @@ int calc_new_size(float new_dt, int old_size, float *old_t);
 
 using namespace std;
 
-int main(int argc, char** argv) {
-#ifndef LEN
-#define LEN 8000
-#endif
-  float t[LEN] = {0};  // параметры трассы для отладки
-  float v[LEN] = {0};
+//int main(int argc, char** argv) {
+//#ifndef LEN
+//#define LEN 8000
+//#endif
+//  float t[LEN] = {0};  // параметры трассы для отладки
+//  float v[LEN] = {0};
+//  float start_time = 1234.5;
+//  float old_dt = 0.5;
+//  float new_dt = 0.1;
+//
+//  generate_trace(t, v, start_time, old_dt, LEN);  // test trace
+//  lagrange_resampler *test =
+//      new lagrange_resampler(start_time, 8000, t, v, new_dt);
+//  write_output(t, v, LEN,
+//               "C:\\Users\\Lenovo\\Desktop\\sborex_resample\\out_old.txt");
+//  test->do_approximation();
+//  float *tf = test->get_new_t();
+//  float *vf = test->get_new_v();
+//  write_output(test->get_new_t(), test->get_new_v(), test->get_new_size(),
+//               "C:\\Users\\Lenovo\\Desktop\\sborex_resample\\out_new.txt");
+//  test->clear();
+//  return 0;
+//}
+
+#define NOT 16 //number of traces
+int main() {
+
+  float t_big[LEN*NOT] = {0};
+  float v_big[LEN*NOT] = {0};
   float start_time = 1234.5;
   float old_dt = 0.5;
   float new_dt = 0.1;
 
-  generate_trace(t, v, start_time, old_dt, LEN);  // test trace
-  lagrange_resampler *test =
-      new lagrange_resampler(start_time, 8000, t, v, new_dt);
-  write_output(t, v, LEN,
-               "C:\\Users\\Lenovo\\Desktop\\sborex_resample\\out_old.txt");
-  test->do_approximation();
-  float *tf = test->get_new_t();
-  float *vf = test->get_new_v();
-  write_output(test->get_new_t(), test->get_new_v(), test->get_new_size(),
-               "C:\\Users\\Lenovo\\Desktop\\sborex_resample\\out_new.txt");
-  test->clear();
-  return 0;
+  for (int i = 0; i < NOT; i++) {
+      generate_trace(t_big+LEN*i,v_big+LEN*i,start_time, old_dt, LEN);
+  }
+  printf("traces generated\n");
+    return 0;
 }
+
+
+
+
+
+
+
+
 
 int calc_new_size(float new_dt, int old_size, float *old_t) {
   return ((old_t[old_size - 1] - old_t[0]) / new_dt +
@@ -182,3 +206,5 @@ void write_output(float *t, float *v, int size, char *filename) {
   }
   file.close();
 }
+
+
