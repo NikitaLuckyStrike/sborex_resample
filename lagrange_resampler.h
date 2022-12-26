@@ -40,11 +40,11 @@ public:
 
     int get_new_size();
 
-private:
+
     int lagrange_trace(float t0, float dt, int size_old, float *t_old,
                        float *v_old, int size_new, float *t_new, float *v_new);
     //функция для рассчета значений трасы после ресамплинга
-
+private:
     float *v_new; // arrays for trace
     float *t_new;
 

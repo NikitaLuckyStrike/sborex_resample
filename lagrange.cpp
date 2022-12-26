@@ -59,12 +59,16 @@ using namespace std;
 //  test->clear();
 //  return 0;
 //}
-
 #define NOT 16 //number of traces
-int main() {
 
+
+
+int main() {
+  float* t_new_big = new float(LEN*NOT*5);
+  float* v_new_big = new float(LEN*NOT*5);
   float t_big[LEN*NOT] = {0};
   float v_big[LEN*NOT] = {0};
+
   float start_time = 1234.5;
   float old_dt = 0.5;
   float new_dt = 0.1;
@@ -72,16 +76,22 @@ int main() {
   for (int i = 0; i < NOT; i++) {
       generate_trace(t_big+LEN*i,v_big+LEN*i,start_time, old_dt, LEN);
   }
-  printf("traces generated\n");
-    return 0;
+  lagrange_resampler* f = new lagrange_resampler(start_time, LEN*NOT,t_big, v_big, new_dt);
+//  f->set_data(t_big, v_big);
+//  f->set_param(start_time, LEN*NOT, new_dt);
+
+  thread threadlist[NOT];
+
+  for (int i = 0; i < NOT; i++) {
+      thread* th = new thread(lagrange_trace, start_time, new_dt, LEN, t_big+i*LEN, v_big+i*LEN,5*LEN, t_new_big+i*5*LEN,v_new_big+i*5*LEN);
+//      threadlist[i] = reinterpret_cast<thread&&>(*th);
+  }
+  for (int i = 0; i < NOT; i++) {
+      //threadlist[i].join();
+  }
+
+  return 0;
 }
-
-
-
-
-
-
-
 
 
 int calc_new_size(float new_dt, int old_size, float *old_t) {
