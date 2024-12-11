@@ -195,15 +195,17 @@ void lagrange_resampler::clear() {
 
     this->dt_new = 0;
 
-    this->size_old = 0; //LEN
+    this->size_old = 0; // LEN
     this->new_size = 0;
 
     this->t_old = nullptr;
     this->v_old = nullptr;
 
-    delete t_new;
-    delete v_new;
+    delete[] t_new; // Правильное удаление массивов
+    delete[] v_new;
 
+    this->t_new = nullptr; // Сбрасываем указатели, чтобы избежать ошибок
+    this->v_new = nullptr;
 
     this->t0 = 0;
 }
