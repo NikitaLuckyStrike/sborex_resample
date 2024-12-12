@@ -120,6 +120,9 @@ int lagrange_resampler::find_index_for_lagrange(float *t_old, int size_old, floa
 
 int lagrange_resampler::lagrange_trace(float t0, float dt_new, int size_old, float *t_old, float *v_old,
                                        int size_new, float *t_new, float *v_new) {
+///deprecated
+
+
 
     // t0 - время синхроимпульса, dt -новый шаг дискретизации, size - размер
     // старого массива, t_old v_old - старая трасса, t_new v_new - новая трасса
@@ -211,12 +214,66 @@ void lagrange_resampler::clear() {
 }
 
 int lagrange_resampler::do_approximation() {
-    if (has_data == GOT_DATA) {
-        lagrange_trace(this->t0, this->dt_new, this->size_old, this->t_old, this->v_old, this->new_size,
-                       this->t_new, this->v_new);
+    if (has_data != GOT_DATA) {
+        return SOME_ERROR; // Возвращаем ошибку, если данных нет
     }
-    has_data = READY_DATA;
-    return has_data;
+
+    const int num_threads = 4; // Количество потоков
+    int chunk_size = new_size / num_threads; // Размер блока для каждого потока
+
+    // Вектор для хранения потоков
+    std::vector<std::thread> threads;
+
+    // Запускаем потоки
+    for (int i = 0; i < num_threads; ++i) {
+        int start = i * chunk_size; // Начало блока
+        int end = (i == num_threads - 1) ? new_size : start + chunk_size; // Конец блока
+
+        // Создаём поток для обработки блока
+        threads.emplace_back([this, start, end]() {
+            for (int ind_t_new = start; ind_t_new < end; ++ind_t_new) {
+                if (t_new[ind_t_new] < t_old[1]) {
+                    // Краевой случай
+                    float tmp_t_old[4];
+                    float tmp_v_old[4];
+                    for (int j = 0; j < 4; ++j) {
+                        tmp_t_old[j] = t_old[j];
+                        tmp_v_old[j] = v_old[j];
+                    }
+                    v_new[ind_t_new] = lagrange_point(t_new[ind_t_new], LAGRANGE_DEGREE, tmp_t_old, tmp_v_old);
+                } else if (t_new[ind_t_new] > t_old[size_old - 2]) {
+                    // Краевой случай (после конца старой трассы)
+                    float tmp_t_old[4];
+                    float tmp_v_old[4];
+                    for (int j = 0; j < 4; ++j) {
+                        tmp_t_old[j] = t_old[size_old - 4 + j];
+                        tmp_v_old[j] = v_old[size_old - 4 + j];
+                    }
+                    v_new[ind_t_new] = lagrange_point(t_new[ind_t_new], LAGRANGE_DEGREE, tmp_t_old, tmp_v_old);
+                } else {
+                    // Обычный случай
+                    int old_t_cur_ind = find_index_for_lagrange(t_old, size_old, t_new[ind_t_new], 0);
+                    float tmp_t_old[4];
+                    float tmp_v_old[4];
+                    for (int j = 0; j < 4; ++j) {
+                        tmp_t_old[j] = t_old[old_t_cur_ind + j];
+                        tmp_v_old[j] = v_old[old_t_cur_ind + j];
+                    }
+                    v_new[ind_t_new] = lagrange_point(t_new[ind_t_new], LAGRANGE_DEGREE, tmp_t_old, tmp_v_old);
+                }
+            }
+        });
+    }
+
+    // Ожидаем завершения всех потоков
+    for (auto &thread : threads) {
+        if (thread.joinable()) {
+            thread.join(); // Присоединяем поток к главному
+        }
+    }
+
+    has_data = READY_DATA; // Отмечаем данные как готовые
+    return READY_DATA;
 }
 
 float *lagrange_resampler::get_new_v() {

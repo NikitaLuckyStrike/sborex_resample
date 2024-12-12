@@ -5,6 +5,9 @@
 #ifndef LAGRANGE_CPP_LAGRANGE_RESAMPLER_H
 #define LAGRANGE_CPP_LAGRANGE_RESAMPLER_H
 
+#include <vector>
+#include <thread>
+
 #include "resampler.h"
 
 
